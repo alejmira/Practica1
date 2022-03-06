@@ -10,68 +10,45 @@ from random import randint
 from multiprocessing import Process
 from multiprocessing import BoundedSemaphore
 from multiprocessing import Semaphore
-from multiprocessing import Lock
-from multiprocessing import current_process
 from multiprocessing import Value
 from multiprocessing import Array
-from multiprocessing import Manager
 
 N = 10
-NPROD = 2
+NPROD = 3
+rand_lower = 0
+rand_upper = 10
 
-def add_data(storage, index, data, mutex):
-    mutex.acquire()
-    try:
-        storage[index] = data
-        #print("p", index, data, flush = True)
-    finally:
-        mutex.release()
-        
-# =============================================================================
-# def get_data(storage, index, mutex): # No sé ni si va a haber que usarlo
-#     mutex.acquire()
-#     try:
-#         data = storage[index]
-#         #for i in range(index.value):
-#         #    storage[i] = storage[i + 1]
-#         #storage[index.value] = -1
-#     finally:
-#         mutex.release()
-#     return data
-# =============================================================================
-
-def producer(storage, index, list_empty, list_non_empty, mutex):
+# Quítese el comentario de las líneas 23, 29 y 34 si se quieren ver las listas con los valores producidos por cada productor
+def producer(storage, index, list_empty, list_non_empty): 
     #producidos = []
     for v in range(N):
         list_empty[index].acquire()
-        data = randint(0, 10)
+        data = randint(rand_lower, rand_upper)
         data += storage[index]
-        add_data(storage, index, data, mutex)
+        storage[index] = data # add data
         #producidos.append(data)
         list_non_empty[index].release()
     list_empty[index].acquire()
-    add_data(storage, index, -1, mutex)
+    storage[index] = -1
     list_non_empty[index].release()
-    #print(producidos)
+    #print("Productor", index, ": ", producidos, flush = True)
 
-def consumer(storage, list_empty, list_non_empty, mutex, merge): # Como lo tengo ahora no usa muex, no sé si hay que añadirlo
+def consumer(storage, list_empty, list_non_empty, merge): 
     for i in range(NPROD):
         list_non_empty[i].acquire()
 
     while list(storage) != [-1]*NPROD:
-        minimum = 2**64-1 # sys.maxsize si se importa system
+        minimum = float("inf")
         index = -1
         for i in range(NPROD): 
             if storage[i] != -1 and storage[i] < minimum:
                 index = i
                 minimum = storage[i]
-        #print("c", index, minimum, flush = True)
         merge.append(minimum)
-        #print(merge)
         list_empty[index].release()
         list_non_empty[index].acquire()
 
-    print(merge)
+    print("Merge: ", merge, flush = True)
         
 
 def main():
@@ -80,16 +57,13 @@ def main():
     for i in range(NPROD):
         storage[i] = 0
     
-    
-    
     list_non_empty = [Semaphore(0) for i in range(NPROD)]
     list_empty = [BoundedSemaphore(1) for i in range(NPROD)]
-    mutex = Lock()
     
-    prodlst = [Process(target = producer, args = (storage, index, list_empty, list_non_empty, mutex)) for index in range(NPROD)]
+    prodlst = [Process(target = producer, args = (storage, index, list_empty, list_non_empty)) for index in range(NPROD)]
 
     # Sólo hay un consumidor
-    cons = Process(target = consumer, args = (storage, list_empty, list_non_empty, mutex, merge))
+    cons = Process(target = consumer, args = (storage, list_empty, list_non_empty, merge))
 
     for p in prodlst:
         p.start()
@@ -99,7 +73,6 @@ def main():
         p.join()
     cons.join()
     
-    #print(merge)
 
 if __name__ == "__main__":
     main()
